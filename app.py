@@ -25,6 +25,30 @@ FEATURES = [
     'GenHlth',
     'Age'
 ]
+# Mapping kode BRFSS Age -> rentang umur
+AGE_LABELS = {
+    1: "1 (18–24)",
+    2: "2 (25–29)",
+    3: "3 (30–34)",
+    4: "4 (35–39)",
+    5: "5 (40–44)",
+    6: "6 (45–49)",
+    7: "7 (50–54)",
+    8: "8 (55–59)",
+    9: "9 (60–64)",
+    10: "10 (65–69)",
+    11: "11 (70–74)",
+    12: "12 (75–79)",
+    13: "13 (80+)",
+}
+
+Age = st.selectbox(
+    "Kategori umur (Age, kode BRFSS 1–13)",
+    options=list(AGE_LABELS.keys()),
+    format_func=lambda x: AGE_LABELS[x],
+    help="Kolom Age di BRFSS adalah kategori umur, bukan umur asli. 1=18–24, 2=25–29, ..., 13=80+."
+)
+
 
 # LOAD MODEL & SCALER
 @st.cache_resource
@@ -114,10 +138,11 @@ with col2:
     )
 
     Age = st.selectbox(
-        "Kategori umur (Age, BRFSS kode 1–13)",
-        options=list(range(1, 14)),
-        format_func=lambda x: f"{x}"
-    )
+    "Kategori umur (Age, kode BRFSS 1–13)",
+    options=list(AGE_LABELS.keys()),
+    format_func=lambda x: AGE_LABELS[x],
+    help="Kolom Age di BRFSS adalah kategori umur, bukan umur asli. 1=18–24, 2=25–29, ..., 13=80+."
+)
 
 st.markdown("---")
 
