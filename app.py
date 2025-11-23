@@ -41,15 +41,6 @@ AGE_LABELS = {
     12: "12 (75–79)",
     13: "13 (80+)",
 }
-
-Age = st.selectbox(
-    "Kategori umur (Age, kode BRFSS 1–13)",
-    options=list(AGE_LABELS.keys()),
-    format_func=lambda x: AGE_LABELS[x],
-    help="Kolom Age di BRFSS adalah kategori umur, bukan umur asli. 1=18–24, 2=25–29, ..., 13=80+."
-)
-
-
 # LOAD MODEL & SCALER
 @st.cache_resource
 def load_artifacts():
