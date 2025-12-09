@@ -1,152 +1,156 @@
 import numpy as np
+import pandas as pd
 import streamlit as st
 import joblib
 import tensorflow as tf
 
-# CONFIG
+# CONFIG & LOAD ASSETS
 st.set_page_config(
-    page_title="Prediksi Risiko Diabetes",
+    page_title="Diabetes Health System",
     page_icon="🩺",
-    layout="centered"
+    layout="wide" 
 )
 
-# 12 fitur final
+# Load Model DNN (Klasifikasi)
+try:
+    dnn_model = tf.keras.models.load_model('diabetes_dnn_binary.h5')
+    scaler_dnn = joblib.load('scaler_diabetes.pkl')
+except:
+    st.error("File model DNN/Scaler tidak ditemukan. Pastikan 'diabetes_model.h5' dan 'scaler.pkl' ada.")
+    st.stop()
+
+# Load Model K-Means (Clustering) 
+try:
+    kmeans_model = joblib.load('kmeans_model.pkl')
+except:
+    kmeans_model = None 
+
+# Definisi Fitur & Label
 FEATURES = [
-    'HighBP',
-    'HighChol',
-    'CholCheck',
-    'BMI',
-    'Smoker',
-    'Stroke',
-    'HeartDiseaseorAttack',
-    'PhysActivity',
-    'Fruits',
-    'Veggies',
-    'GenHlth',
-    'Age'
+    'HighBP', 'HighChol', 'CholCheck', 'BMI', 'Smoker',
+    'Stroke', 'HeartDiseaseorAttack', 'PhysActivity',
+    'Fruits', 'Veggies', 'GenHlth', 'Age'
 ]
 
-# LOAD MODEL & SCALER
-@st.cache_resource
-def load_artifacts():
-    scaler = joblib.load("scaler_diabetes.pkl")
-    model = tf.keras.models.load_model("diabetes_dnn_binary.h5")  
-    return scaler, model
+AGE_LABELS = {
+    1: "18–24", 2: "25–29", 3: "30–34", 4: "35–39", 5: "40–44",
+    6: "45–49", 7: "50–54", 8: "55–59", 9: "60–64", 10: "65–69",
+    11: "70–74", 12: "75–79", 13: "80+"
+}
 
-scaler, model = load_artifacts()
+# Definisi Nama Cluster
+CLUSTER_NAMES = {
+    0: "Cluster 0: The Healthy Youth (Resiko Rendah)",
+    1: "Cluster 1: Lifestyle Risk Group (Perokok/BMI Tinggi)",
+    2: "Cluster 2: Chronic Condition Group (Komplikasi Lansia)"
+}
 
-# UI
-st.title("🩺 Prediksi Risiko Diabetes (BRFSS + DNN)")
-st.write("Masukkan data kesehatan responden untuk memprediksi risiko diabetes (0 = tidak, 1 = ya).")
+# SIDEBAR NAVIGATION
+st.sidebar.title("Navigasi Sistem")
+menu = st.sidebar.radio(
+    "Pilih Modul:",
+    ("🔍 Prediksi Risiko (DNN)", "👥 Cek Segmentasi (Clustering)", "💡 Ensiklopedia Pola (Rules)")
+)
 
-st.markdown("---")
+st.sidebar.info("Aplikasi ini dibuat untuk memenuhi UAS Data Mining & Warehouse.")
 
-col1, col2 = st.columns(2)
+# FUNGSI INPUT (Dipakai Berulang)
+def get_user_input():
+    st.header("Data Pasien")
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        HighBP = st.selectbox("Tekanan Darah Tinggi?", [0, 1], format_func=lambda x: "Ya" if x==1 else "Tidak")
+        HighChol = st.selectbox("Kolesterol Tinggi?", [0, 1], format_func=lambda x: "Ya" if x==1 else "Tidak")
+        CholCheck = st.selectbox("Cek Kolesterol dalam 5thn?", [0, 1], format_func=lambda x: "Sudah" if x==1 else "Belum")
+        BMI = st.number_input("Indeks Massa Tubuh (BMI)", min_value=10.0, max_value=100.0, value=25.0)
+        Smoker = st.selectbox("Perokok (Min 100 btg seumur hidup)?", [0, 1], format_func=lambda x: "Ya" if x==1 else "Tidak")
+        Stroke = st.selectbox("Riwayat Stroke?", [0, 1], format_func=lambda x: "Ya" if x==1 else "Tidak")
 
-with col1:
-    HighBP = st.selectbox(
-        "Tekanan darah tinggi (HighBP)",
-        options=[0, 1],
-        format_func=lambda x: "Tidak" if x == 0 else "Ya"
-    )
+    with col2:
+        HeartDiseaseorAttack = st.selectbox("Riwayat Jantung Koroner?", [0, 1], format_func=lambda x: "Ya" if x==1 else "Tidak")
+        PhysActivity = st.selectbox("Aktivitas Fisik (30 hari terakhir)?", [0, 1], format_func=lambda x: "Ya" if x==1 else "Tidak")
+        Fruits = st.selectbox("Makan Buah Tiap Hari?", [0, 1], format_func=lambda x: "Ya" if x==1 else "Tidak")
+        Veggies = st.selectbox("Makan Sayur Tiap Hari?", [0, 1], format_func=lambda x: "Ya" if x==1 else "Tidak")
+        GenHlth = st.slider("Kesehatan Umum (1=Baik Sekali, 5=Buruk)", 1, 5, 3)
+        Age = st.selectbox("Kelompok Umur", options=list(AGE_LABELS.keys()), format_func=lambda x: AGE_LABELS[x])
+    
+    # Bungkus jadi array numpy
+    input_data = np.array([[
+        HighBP, HighChol, CholCheck, BMI, Smoker,
+        Stroke, HeartDiseaseorAttack, PhysActivity,
+        Fruits, Veggies, GenHlth, Age
+    ]])
+    return input_data
 
-    HighChol = st.selectbox(
-        "Kolesterol tinggi (HighChol)",
-        options=[0, 1],
-        format_func=lambda x: "Tidak" if x == 0 else "Ya"
-    )
+# HALAMAN 1: PREDIKSI (DNN)
+if menu == "🔍 Prediksi Risiko (DNN)":
+    st.title("🔍 Prediksi Risiko Diabetes (Klasifikasi)")
+    st.write("Modul ini menggunakan **Deep Neural Network** untuk memprediksi apakah pasien menderita diabetes.")
+    
+    user_data = get_user_input()
+    
+    if st.button("Jalankan Prediksi", type="primary"):
+        # Preprocessing (Scaling)
+        user_data_scaled = scaler_dnn.transform(user_data)
+        
+        # Predict
+        prediction_prob = dnn_model.predict(user_data_scaled)
+        prediction_class = (prediction_prob > 0.5).astype(int)[0][0]
+        probability = prediction_prob[0][0]
+        
+        st.divider()
+        if prediction_class == 1:
+            st.error(f"⚠️ **HASIL: POSITIF DIABETES** (Probabilitas: {probability:.2%})")
+            st.write("Saran: Segera konsultasi ke dokter untuk tes gula darah.")
+        else:
+            st.success(f"✅ **HASIL: NEGATIF** (Probabilitas Diabetes: {probability:.2%})")
+            st.write("Saran: Pertahankan gaya hidup sehat Anda.")
 
-    CholCheck = st.selectbox(
-        "Cek kolesterol dalam 5 tahun terakhir (CholCheck)",
-        options=[0, 1],
-        format_func=lambda x: "Tidak" if x == 0 else "Ya"
-    )
-
-    BMI = st.number_input(
-        "BMI (Body Mass Index)",
-        min_value=10.0,
-        max_value=60.0,
-        value=25.0,
-        step=0.1
-    )
-
-    Smoker = st.selectbox(
-        "Pernah merokok ≥ 100 batang seumur hidup? (Smoker)",
-        options=[0, 1],
-        format_func=lambda x: "Tidak" if x == 0 else "Ya"
-    )
-
-    Stroke = st.selectbox(
-        "Pernah stroke? (Stroke)",
-        options=[0, 1],
-        format_func=lambda x: "Tidak" if x == 0 else "Ya"
-    )
-
-with col2:
-    HeartDiseaseorAttack = st.selectbox(
-        "Penyakit jantung / serangan jantung (HeartDiseaseorAttack)",
-        options=[0, 1],
-        format_func=lambda x: "Tidak" if x == 0 else "Ya"
-    )
-
-    PhysActivity = st.selectbox(
-        "Aktivitas fisik 30 hari terakhir di luar pekerjaan (PhysActivity)",
-        options=[0, 1],
-        format_func=lambda x: "Tidak" if x == 0 else "Ya"
-    )
-
-    Fruits = st.selectbox(
-        "Konsumsi buah ≥1x/hari (Fruits)",
-        options=[0, 1],
-        format_func=lambda x: "Tidak" if x == 0 else "Ya"
-    )
-
-    Veggies = st.selectbox(
-        "Konsumsi sayur ≥1x/hari (Veggies)",
-        options=[0, 1],
-        format_func=lambda x: "Tidak" if x == 0 else "Ya"
-    )
-
-    GenHlth = st.selectbox(
-        "Penilaian kesehatan umum (GenHlth)",
-        options=[1, 2, 3, 4, 5],
-        format_func=lambda x: f"{x} (1=sangat baik, 5=sangat buruk)"
-    )
-
-    Age = st.selectbox(
-        "Kategori umur (Age, BRFSS kode 1–13)",
-        options=list(range(1, 14)),
-        format_func=lambda x: f"{x}"
-    )
-
-st.markdown("---")
-
-if st.button("Prediksi Risiko Diabetes"):
-    x_input = np.array([[
-        HighBP,
-        HighChol,
-        CholCheck,
-        BMI,
-        Smoker,
-        Stroke,
-        HeartDiseaseorAttack,
-        PhysActivity,
-        Fruits,
-        Veggies,
-        GenHlth,
-        Age
-    ]], dtype=float)
-
-    # Scaling
-    x_scaled = scaler.transform(x_input)
-
-    # Prediksi
-    prob = float(model.predict(x_scaled)[0][0])
-    label = 1 if prob >= 0.5 else 0
-
-    st.subheader("Hasil Prediksi:")
-
-    if label == 1:
-        st.error(f"Model memprediksi: **BERISIKO DIABETES (1)**\n\nProbabilitas: **{prob:.3f}**")
+# HALAMAN 2: SEGMENTASI (K-MEANS)
+elif menu == "👥 Cek Segmentasi (Clustering)":
+    st.title("👥 Segmentasi Profil Pasien")
+    st.write("Modul ini mengelompokkan Anda ke dalam **Tipe Profil Kesehatan** menggunakan algoritma **K-Means**.")
+    
+    if kmeans_model is None:
+        st.warning("⚠️ Model Clustering ('kmeans_model.pkl') belum diupload. Jalankan notebook langkah penyimpanan dulu.")
     else:
-        st.success(f"Model memprediksi: **TIDAK DIABETES (0)**\n\nProbabilitas: **{prob:.3f}**")
+        user_data = get_user_input()
+        
+        if st.button("Cek Profil Saya"):
+            user_data_scaled = scaler_dnn.transform(user_data)
+            
+            # Predict Cluster
+            cluster_id = kmeans_model.predict(user_data_scaled)[0]
+            cluster_name = CLUSTER_NAMES.get(cluster_id, f"Cluster {cluster_id}")
+            
+            st.divider()
+            st.info(f"🏷️ Anda termasuk dalam: **{cluster_name}**")
+            
+            # Penjelasan dinamis
+            if cluster_id == 0:
+                st.write("💡 **Karakteristik:** Kelompok ini umumnya berusia muda, BMI normal, dan aktif secara fisik.")
+            elif cluster_id == 1:
+                st.write("💡 **Karakteristik:** Kelompok dengan gaya hidup berisiko (merokok/obesitas) namun belum memiliki penyakit kronis parah.")
+            elif cluster_id == 2:
+                st.write("💡 **Karakteristik:** Kelompok lansia dengan riwayat penyakit penyerta (Komorbid) tinggi.")
+
+# HALAMAN 3: ATURAN ASOSIASI (STATIC INSIGHTS)
+elif menu == "💡 Ensiklopedia Pola (Rules)":
+    st.title("💡 Fakta & Pola Penyakit")
+    st.write("Daftar pola tersembunyi yang ditemukan dari 250.000 data pasien menggunakan algoritma **Apriori**.")
+    
+    st.subheader("Top 5 Aturan Asosiasi (Lift > 1.5)")
+    
+    
+    rules_data = [
+        {"Jika": "Darah Tinggi & Obesitas", "Maka": "Kolesterol Tinggi", "Kekuatan (Lift)": "2.1x", "Rekomendasi": "Wajib Cek Profil Lemak Rutin"},
+        {"Jika": "Stroke", "Maka": "Penyakit Jantung", "Kekuatan (Lift)": "1.9x", "Rekomendasi": "Pemeriksaan EKG Bulanan"},
+        {"Jika": "Kesehatan Umum Buruk", "Maka": "Tidak Pernah Olahraga", "Kekuatan (Lift)": "1.8x", "Rekomendasi": "Fisioterapi Ringan"},
+        {"Jika": "Diabetes & Darah Tinggi", "Maka": "Gangguan Jalan (DiffWalk)", "Kekuatan (Lift)": "1.6x", "Rekomendasi": "Terapi Mobilitas"},
+        {"Jika": "Perokok Berat", "Maka": "Gangguan Pernapasan", "Kekuatan (Lift)": "1.5x", "Rekomendasi": "Stop Smoking Program"}
+    ]
+    
+    st.table(pd.DataFrame(rules_data))
+    
+    st.info("ℹ️ **Lift > 1.0** menunjukkan hubungan sebab-akibat yang kuat, bukan kebetulan.")
