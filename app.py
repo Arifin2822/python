@@ -51,9 +51,6 @@ menu = st.sidebar.radio(
     "Pilih Modul:",
     ("🔍 Prediksi Risiko (DNN)", "👥 Cek Segmentasi (Clustering)", "💡 Ensiklopedia Pola (Rules)")
 )
-
-st.sidebar.info("Aplikasi ini dibuat untuk memenuhi UAS Data Mining & Warehouse.")
-
 # FUNGSI INPUT (Dipakai Berulang)
 def get_user_input():
     st.header("Data Pasien")
